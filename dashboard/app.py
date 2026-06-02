@@ -1,667 +1,316 @@
 import os
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
 import streamlit as st
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-    accuracy_score,
-    confusion_matrix,
-    f1_score,
-    precision_score,
-    recall_score,
-)
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 
-# =============================================================================
-# CONFIGURAÇÃO GERAL
-# =============================================================================
+
+# 1. Config. de Layout do Streamlit
+
 st.set_page_config(
-    page_title="Dashboard - Churn Telco Predictor",
+    page_title="Dashboard de Churn - Estatística & Probabilidade",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
-st.markdown(
-    """
+st.markdown("""
     <style>
-    .main { background-color: #f8fafc; }
-    .stMetric {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    div[data-testid="stMetric"] {
+        background-color: #1e293b !important;
+        padding: 15px !important;
+        border-radius: 10px !important;
+        border: 1px solid #334155 !important;
     }
-    h1, h2, h3 { font-family: 'Segoe UI', Arial, sans-serif; }
-    .resultado-card {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        color: #ffffff;
-        padding: 20px;
-        border-radius: 16px;
-        border: 1px solid #334155;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.18);
-        min-height: 128px;
-    }
-    .resultado-card .label {
-        color: #cbd5e1;
-        font-size: 0.92rem;
-        font-weight: 700;
-        margin-bottom: 8px;
-    }
-    .resultado-card .valor {
-        color: #ffffff;
-        font-size: 1.85rem;
-        font-weight: 800;
-        margin-bottom: 8px;
-    }
-    .resultado-card .delta {
-        display: inline-block;
-        background-color: #dcfce7;
-        color: #166534;
-        padding: 4px 9px;
-        border-radius: 999px;
-        font-size: 0.85rem;
-        font-weight: 700;
-    }
-    div[data-testid="stExpander"] {
-        background-color: white;
-        border-radius: 8px;
-        border: 1px solid #e2e8f0;
-    }
-    .insight-box {
-        background-color: #ffffff;
-        border-left: 5px solid #2563eb;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    }
+    div[data-testid="stMetric"] label { color: #94a3b8 !important; font-weight: bold !important; }
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] { color: #f8fafc !important; }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True) 
 
-st.title("Projeto Estatística e Probabilidade")
-st.markdown(
-    "**Tema:** Análise de Churn em Telecomunicações & Modelos de Classificação Probabilística"
-)
+# 2. Cálculo Conceitual do Teorema de Bayes
 
-# IMPLEMENTAÇÃO MANUAL DO TEOREMA DE BAYES
-class ImplementacaoBayesManual:
-    """Classificador Naive Bayes categórico implementado manualmente.
-
-    A classe calcula:
-    - P(C): probabilidade a priori de cada classe;
-    - P(X|C): verossimilhança dos atributos observados em cada classe;
-    - P(C|X): probabilidade a posteriori normalizada.
+def calcular_bayes_manual(df_treino, dados_cliente):
     """
+    Implementação explícita do Teorema de Bayes para demonstrar compreensão teórica.
+    Calcula P(Churn=Yes | X) e P(Churn=No | X) usando frequências e Suavização de Laplace.
+    """
+    total_registros = len(df_treino)
+    df_churn_sim = df_treino[df_treino['Churn'] == 'Yes']
+    df_churn_nao = df_treino[df_treino['Churn'] == 'No']
+    
+    # P(C) - Probabilidades a Priori
+    p_prior_sim = len(df_churn_sim) / total_registros
+    p_prior_nao = len(df_churn_nao) / total_registros
+    
+    # P(X|C) - Verossimilhanças acumuladas
+    verossimilhanca_sim = 1.0
+    verossimilhanca_nao = 1.0
+    
+    for coluna, valor in dados_cliente.items():
+        v_unicos = df_treino[coluna].nunique()
+        
+        # Frequência condicional para Churn = Yes
+        freq_sim = len(df_churn_sim[df_churn_sim[coluna] == valor])
+        verossimilhanca_sim *= (freq_sim + 1) / (len(df_churn_sim) + v_unicos)
+        
+        # Frequência condicional para Churn = No
+        freq_nao = len(df_churn_nao[df_churn_nao[coluna] == valor])
+        verossimilhanca_nao *= (freq_nao + 1) / (len(df_churn_nao) + v_unicos)
+        
+    # P(C|X) - Probabilidades a Posteriori (Numeradores de Bayes)
+    post_sim = p_prior_sim * verossimilhanca_sim
+    post_nao = p_prior_nao * verossimilhanca_nao
+    
+    soma_posteriors = post_sim + post_nao
+    if soma_posteriors == 0:
+        return 0.5
+        
+    # Retorna apenas a probabilidade de Churn ser "Yes" normalizada
+    return post_sim / soma_posteriors
 
-    def __init__(self):
-        self.p_prior = {}
-        self.p_conditional = {}
-        self.classes = None
-        self.vocab_tamanho = {}
-
-    def treinar(self, X_cat: pd.DataFrame, y: pd.Series):
-        self.classes = y.unique()
-        n_total = len(y)
-
-        for c in self.classes:
-            self.p_prior[c] = len(y[y == c]) / n_total
-
-        X_cat_df = X_cat.copy()
-        X_cat_df["target"] = y.values
-
-        for col in X_cat.columns:
-            self.p_conditional[col] = {}
-            self.vocab_tamanho[col] = X_cat[col].nunique()
-            for c in self.classes:
-                sub_df = X_cat_df[X_cat_df["target"] == c]
-                counts = sub_df[col].value_counts()
-                total_classe = len(sub_df)
-                vocab = self.vocab_tamanho[col]
-                self.p_conditional[col][c] = {}
-
-                # Laplace: evita probabilidade zero para categorias raras.
-                for val in X_cat[col].unique():
-                    count = counts.get(val, 0)
-                    self.p_conditional[col][c][val] = (count + 1) / (total_classe + vocab)
-
-    def predizer_probabilidade(self, instancia_dict: dict):
-        posteriors = {}
-        detalhes = {}
-
-        for c in self.classes:
-            prior = self.p_prior[c]
-            verossimilhanca = 1.0
-            fatores = []
-
-            for col, val in instancia_dict.items():
-                if col in self.p_conditional and val in self.p_conditional[col][c]:
-                    prob = self.p_conditional[col][c][val]
-                else:
-                    # Suavização para categoria não observada.
-                    prob = 1 / (self.vocab_tamanho.get(col, 10) + 10)
-                verossimilhanca *= prob
-                fatores.append((col, val, prob))
-
-            bruto = prior * verossimilhanca
-            posteriors[c] = bruto
-            detalhes[c] = {
-                "prior": prior,
-                "verossimilhanca": verossimilhanca,
-                "posterior_nao_normalizado": bruto,
-                "fatores": fatores,
-            }
-
-        soma = sum(posteriors.values())
-        if soma > 0:
-            for c in posteriors:
-                posteriors[c] /= soma
-        else:
-            posteriors = self.p_prior.copy()
-
-        return posteriors, detalhes
-
-
-# CARREGAMENTO E TRATAMENTO DOS DADOS
+# =============================================================================
+# 3. CARREGAMENTO, TRATAMENTO E MODELAGEM DE BACKEND
+# =============================================================================
 @st.cache_data
-def carregar_e_tratar_dados():
-    diretorio_atual = os.path.dirname(os.path.abspath(__file__))
-    caminho_csv = os.path.join(diretorio_atual, "WA_Fn-UseC_-Telco-Customer-Churn.csv")
-
-    if not os.path.exists(caminho_csv):
-        st.error(
-            "Ficheiro não encontrado. Coloque 'WA_Fn-UseC_-Telco-Customer-Churn.csv' "
-            f"na mesma pasta deste app.py: {diretorio_atual}"
-        )
-        st.stop()
-
-    df_original = pd.read_csv(caminho_csv)
-    df = df_original.copy()
-
-    log_tratamento = []
-
-    duplicatas = int(df.duplicated().sum())
-    if duplicatas > 0:
-        df = df.drop_duplicates()
-    log_tratamento.append(
-        {
-            "Etapa": "Remoção de duplicatas",
-            "Evidência": f"{duplicatas} registros duplicados encontrados.",
-            "Justificativa técnica": "Duplicatas podem distorcer frequências, probabilidades a priori e métricas dos modelos.",
-            "Impacto esperado": "Evita que clientes repetidos tenham peso indevido na análise.",
-        }
-    )
-
-    espacos_total = int((df["TotalCharges"] == " ").sum())
-    df["TotalCharges"] = df["TotalCharges"].replace(" ", np.nan).astype(float)
-    ausentes_total = int(df["TotalCharges"].isna().sum())
-    mediana_total = float(df["TotalCharges"].median())
-    df["TotalCharges"] = df["TotalCharges"].fillna(mediana_total)
-    log_tratamento.append(
-        {
-            "Etapa": "Tratamento de valores ausentes em TotalCharges",
-            "Evidência": f"{espacos_total} espaços em branco convertidos em NaN; {ausentes_total} valores imputados.",
-            "Justificativa técnica": "TotalCharges estava como texto por conter espaços; modelos e gráficos precisam de variável numérica.",
-            "Impacto esperado": "Mantém registros válidos e reduz perda de informação usando imputação robusta pela mediana.",
-        }
-    )
-
-    outlier_info = []
-    for col in ["tenure", "MonthlyCharges", "TotalCharges"]:
-        q1 = df[col].quantile(0.25)
-        q3 = df[col].quantile(0.75)
-        iqr = q3 - q1
-        inf, sup = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        qtd_outliers = int(((df[col] < inf) | (df[col] > sup)).sum())
-        df[col] = np.where(df[col] > sup, sup, df[col])
-        df[col] = np.where(df[col] < inf, inf, df[col])
-        outlier_info.append(f"{col}: {qtd_outliers}")
-    log_tratamento.append(
-        {
-            "Etapa": "Tratamento de outliers pelo método IQR",
-            "Evidência": "; ".join(outlier_info),
-            "Justificativa técnica": "Valores extremos podem deslocar médias, dispersões e fronteiras de decisão dos modelos.",
-            "Impacto esperado": "Reduz influência exagerada de extremos sem excluir clientes do dataset.",
-        }
-    )
-
-    df["TenureCluster"] = pd.cut(
-        df["tenure"],
-        bins=[0, 12, 36, 100],
-        labels=["Curto Prazo", "Medio Prazo", "Longo Prazo"],
-        include_lowest=True,
-    )
-    df["MonthlyChargesCluster"] = pd.cut(
-        df["MonthlyCharges"],
-        bins=[0, 35, 75, 150],
-        labels=["Baixo Gasto", "Medio Gasto", "Alto Gasto"],
-        include_lowest=True,
-    )
-    log_tratamento.append(
-        {
-            "Etapa": "Engenharia de atributos",
-            "Evidência": "Criação de TenureCluster e MonthlyChargesCluster.",
-            "Justificativa técnica": "O Teorema de Bayes manual trabalha melhor com atributos categóricos interpretáveis.",
-            "Impacto esperado": "Facilita cálculo de verossimilhanças e explicação conceitual na apresentação.",
-        }
-    )
-
-    if "customerID" in df.columns:
-        df.drop(columns=["customerID"], inplace=True, errors="ignore")
-        log_tratamento.append(
-            {
-                "Etapa": "Remoção de identificador",
-                "Evidência": "Coluna customerID removida.",
-                "Justificativa técnica": "Identificadores únicos não possuem poder estatístico generalizável.",
-                "Impacto esperado": "Evita ruído e risco de overfitting em modelos de classificação.",
-            }
-        )
-
-    return df_original, df, pd.DataFrame(log_tratamento)
-
-
-@st.cache_resource
-def treinar_todos_modelos(data_df):
-    df_ml = data_df.copy()
-    df_ml.drop(columns=["TenureCluster", "MonthlyChargesCluster"], errors="ignore", inplace=True)
-
-    features_bayes = ["Contract", "PaperlessBilling", "TenureCluster", "MonthlyChargesCluster"]
-    X_b = data_df[features_bayes].astype(str)
-    y_b = data_df["Churn"]
-    bayes_m = ImplementacaoBayesManual()
-    bayes_m.treinar(X_b, y_b)
-
-    encoders = {}
-    for col in df_ml.select_dtypes(include=["object", "category"]).columns:
-        if col != "Churn":
-            le = LabelEncoder()
-            df_ml[col] = le.fit_transform(df_ml[col].astype(str))
-            encoders[col] = le
-
-    le_target = LabelEncoder()
-    df_ml["Churn"] = le_target.fit_transform(df_ml["Churn"].astype(str))
-    encoders["Churn"] = le_target
-
-    X = df_ml.drop(columns=["Churn"])
-    y = df_ml["Churn"]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    scaler = StandardScaler()
-    X_train_sc = scaler.fit_transform(X_train)
-    X_test_sc = scaler.transform(X_test)
-
-    lr = LogisticRegression(max_iter=1000, random_state=42)
-    rf = RandomForestClassifier(n_estimators=250, random_state=42, class_weight="balanced")
-    lr.fit(X_train_sc, y_train)
-    rf.fit(X_train, y_train)
-
-    pred_lr = lr.predict(X_test_sc)
-    pred_rf = rf.predict(X_test)
-
-    metricas = pd.DataFrame(
-        {
-            "Modelo": ["Regressão Logística", "Random Forest"],
-            "Acurácia": [accuracy_score(y_test, pred_lr), accuracy_score(y_test, pred_rf)],
-            "Precisão": [precision_score(y_test, pred_lr), precision_score(y_test, pred_rf)],
-            "Recall": [recall_score(y_test, pred_lr), recall_score(y_test, pred_rf)],
-            "F1-Score": [f1_score(y_test, pred_lr), f1_score(y_test, pred_rf)],
-        }
-    )
-
-    matrizes = {
-        "Regressão Logística": confusion_matrix(y_test, pred_lr),
-        "Random Forest": confusion_matrix(y_test, pred_rf),
-    }
-
-    return {
-        "bayes": bayes_m,
-        "lr": lr,
-        "rf": rf,
-        "encoders": encoders,
-        "scaler": scaler,
-        "metricas": metricas,
-        "matrizes": matrizes,
-        "features": X.columns.tolist(),
-        "features_bayes": features_bayes,
-        "y_test": y_test,
-    }
-
-
-df_original, df, log_tratamento = carregar_e_tratar_dados()
-artefatos = treinar_todos_modelos(df)
-bayes_manual = artefatos["bayes"]
-lr_model = artefatos["lr"]
-rf_model = artefatos["rf"]
-encoders = artefatos["encoders"]
-scaler = artefatos["scaler"]
-metricas_modelos = artefatos["metricas"]
-matrizes_confusao = artefatos["matrizes"]
-ml_feature_names = artefatos["features"]
-features_bayes = artefatos["features_bayes"]
-
-# =============================================================================
-# FUNÇÕES AUXILIARES
-# =============================================================================
-def taxa_churn_por_grupo(data, coluna):
-    return (
-        data.groupby(coluna, observed=False)["Churn"]
-        .apply(lambda s: (s == "Yes").mean() * 100)
-        .sort_values(ascending=False)
-        .reset_index(name="Taxa de Churn (%)")
-    )
-
-
-def plot_bar_churn(data, coluna, titulo):
-    taxa = taxa_churn_por_grupo(data, coluna)
-    fig, ax = plt.subplots(figsize=(7, 3.7))
-    sns.barplot(data=taxa, x=coluna, y="Taxa de Churn (%)", ax=ax)
-    ax.set_title(titulo)
-    ax.set_ylabel("Taxa de Churn (%)")
-    ax.tick_params(axis="x", rotation=25)
-    return fig, taxa
-
-
-def card_resultado(titulo, valor, detalhe=""):
-    detalhe_html = f'<span class="delta">{detalhe}</span>' if detalhe else ""
-    st.markdown(
-        f"""<div class="resultado-card">
-                <div class="label">{titulo}</div>
-                <div class="valor">{valor}</div>
-                {detalhe_html}
-            </div>""",
-        unsafe_allow_html=True,
-    )
-
-
-# NAVEGAÇÃO
-tabs = st.tabs(
-    [
-        "Seção 1: Análise Exploratória",
-        "Seção 2: Classificação Probabilística",
-        "Validação dos Modelos",
+def pipeline_dados_e_modelos():
+    # Carregamento
+    df = pd.read_csv("WA_Fn-UseC_-Telco-Customer-Churn.csv")
+    
+    # Tratamento de dados 
+    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+    df['TotalCharges'] = df['TotalCharges'].fillna(df['TotalCharges'].median())
+    
+    # Codificação para os modelos de Machine Learning
+    df_ml = df.copy()
+    colunas_categoricas = [
+        'gender', 'Partner', 'Dependents', 'PhoneService', 'MultipleLines',
+        'InternetService', 'OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
+        'TechSupport', 'StreamingTV', 'StreamingMovies', 'Contract',
+        'PaperlessBilling', 'PaymentMethod'
     ]
-)
-
-# =============================================================================
-# ABA 1 - EDA
-# =============================================================================
-with tabs[0]:
-    st.header("Seção 1 - Análise Exploratória dos Dados")
-
-    total_clientes = len(df)
-    churn_rate = (df["Churn"].eq("Yes").mean() * 100)
-    colm1, colm2, colm3, colm4 = st.columns(4)
-    colm1.metric("Clientes analisados", f"{total_clientes:,}".replace(",", "."))
-    colm2.metric("Taxa geral de churn", f"{churn_rate:.2f}%")
-    colm3.metric("Cobrança mensal média", f"${df['MonthlyCharges'].mean():.2f}")
-    colm4.metric("Tempo médio de contrato", f"{df['tenure'].mean():.1f} meses")
-
-    st.markdown(
-        '<div class="insight-box"><b>Insight geral:</b> a variável alvo é <b>Churn</b>, uma variável categórica binária. O objetivo é entender padrões associados à saída de clientes e prever o risco para novos perfis informados pelo usuário.</div>',
-        unsafe_allow_html=True,
-    )
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Distribuição quantitativa: tempo de contrato")
-        st.caption("Objetivo analítico: verificar se clientes recentes concentram maior volume de churn.")
-        fig, ax = plt.subplots(figsize=(7, 3.7))
-        sns.histplot(data=df, x="tenure", hue="Churn", kde=True, multiple="stack", ax=ax)
-        ax.set_title("Distribuição de Tenure por Churn")
-        ax.set_xlabel("Meses de contrato")
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        st.info("Interpretação: clientes com menor tempo de contrato costumam ser um grupo crítico para retenção, pois ainda não criaram vínculo duradouro com a empresa.")
-
-    with c2:
-        st.subheader("Relação financeira: mensalidade x total pago")
-        st.caption("Objetivo analítico: observar padrões entre cobrança mensal, valor acumulado e churn.")
-        fig, ax = plt.subplots(figsize=(7, 3.7))
-        sns.scatterplot(data=df, x="MonthlyCharges", y="TotalCharges", hue="Churn", alpha=0.55, ax=ax)
-        ax.set_title("MonthlyCharges x TotalCharges por Churn")
-        ax.set_xlabel("Cobrança mensal")
-        ax.set_ylabel("Cobrança total")
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        st.info("Interpretação: mensalidades altas combinadas com baixo tempo/baixo total acumulado podem indicar clientes novos e mais suscetíveis à saída.")
-
-    c3, c4 = st.columns(2)
-    with c3:
-        st.subheader("Variável qualitativa: tipo de contrato")
-        st.caption("Objetivo analítico: comparar a taxa de churn entre categorias contratuais.")
-        fig, taxa_contract = plot_bar_churn(df, "Contract", "Taxa de Churn por Tipo de Contrato")
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        maior = taxa_contract.iloc[0]
-        st.info(f"Interpretação: a categoria com maior churn é **{maior['Contract']}**, com aproximadamente **{maior['Taxa de Churn (%)']:.1f}%**.")
-
-    with c4:
-        st.subheader("Variável qualitativa: método de pagamento")
-        st.caption("Objetivo analítico: identificar meios de pagamento associados a maior churn.")
-        fig, taxa_pag = plot_bar_churn(df, "PaymentMethod", "Taxa de Churn por Método de Pagamento")
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        maior = taxa_pag.iloc[0]
-        st.info(f"Interpretação: o método com maior churn é **{maior['PaymentMethod']}**, com aproximadamente **{maior['Taxa de Churn (%)']:.1f}%**.")
-
-    c5, c6 = st.columns(2)
-    with c5:
-        st.subheader("Comparação de distribuição: MonthlyCharges")
-        st.caption("Objetivo analítico: comparar a cobrança mensal entre clientes que saíram e ficaram.")
-        fig, ax = plt.subplots(figsize=(7, 3.7))
-        sns.boxplot(data=df, x="Churn", y="MonthlyCharges", ax=ax)
-        ax.set_title("MonthlyCharges por Churn")
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        st.info("Interpretação: o boxplot ajuda a verificar se o grupo com churn apresenta mensalidades mais elevadas.")
-
-    with c6:
-        st.subheader("Correlação entre variáveis numéricas")
-        st.caption("Objetivo analítico: avaliar relações lineares entre variáveis quantitativas.")
-        fig, ax = plt.subplots(figsize=(7, 3.7))
-        corr = df[["tenure", "MonthlyCharges", "TotalCharges"]].corr()
-        sns.heatmap(corr, annot=True, cmap="Blues", fmt=".2f", ax=ax)
-        ax.set_title("Mapa de Correlação")
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        st.info("Interpretação: TotalCharges tende a se relacionar com tenure, pois clientes antigos acumulam maior valor pago.")
-
-# =============================================================================
-# ABA 2 - CLASSIFICAÇÃO PROBABILÍSTICA
-# =============================================================================
-with tabs[1]:
-    st.header("Seção 2 - Sistema Interativo de Classificação Probabilística")
-    inp_contract = st.sidebar.selectbox("Tipo de Contrato", ["Month-to-month", "One year", "Two year"])
-    inp_paperless = st.sidebar.selectbox("Faturamento Digital", ["Yes", "No"])
-    inp_internet = st.sidebar.selectbox("Serviço de Internet", ["DSL", "Fiber optic", "No"])
-    inp_payment = st.sidebar.selectbox(
-        "Método de Pagamento",
-        ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"],
-    )
-    inp_tenure = st.sidebar.slider("Meses de Contrato (Tenure)", 1, 72, 24)
-    inp_monthly = st.sidebar.slider("Cobrança Mensal ($)", 18.0, 120.0, 65.0)
-
-    # TotalCharges é derivado para reduzir filtros, mas manter coerência com o modelo.
-    inp_total = float(inp_tenure * inp_monthly)
-    st.sidebar.metric("Total acumulado estimado", f"${inp_total:,.2f}")
-
-    t_cluster = "Curto Prazo" if inp_tenure <= 12 else ("Medio Prazo" if inp_tenure <= 36 else "Longo Prazo")
-    m_cluster = "Baixo Gasto" if inp_monthly <= 35 else ("Medio Gasto" if inp_monthly <= 75 else "Alto Gasto")
-
-    instancia_bayes = {
-        "Contract": inp_contract,
-        "PaperlessBilling": inp_paperless,
-        "TenureCluster": t_cluster,
-        "MonthlyChargesCluster": m_cluster,
+    
+    encoders = {}
+    for col in colunas_categoricas:
+        le = LabelEncoder()
+        df_ml[col] = le.fit_transform(df_ml[col])
+        encoders[col] = le
+        
+    le_churn = LabelEncoder()
+    df_ml['Churn'] = le_churn.fit_transform(df_ml['Churn'])
+    
+    # Seleção de features correlacionadas
+    features_lista = ['Contract', 'InternetService', 'PaymentMethod', 'tenure', 'MonthlyCharges', 'TotalCharges']
+    X = df_ml[features_lista]
+    y = df_ml['Churn']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    
+    # Base original de treino reconstruída para o cálculo de Bayes Textual manual
+    df_treino_bayes = df.loc[X_train.index]
+    
+    # Normalização/Escalonamento 
+    scaler = StandardScaler()
+    X_train_scaled = X_train.copy()
+    X_test_scaled = X_test.copy()
+    X_train_scaled[['tenure', 'MonthlyCharges', 'TotalCharges']] = scaler.fit_transform(X_train[['tenure', 'MonthlyCharges', 'TotalCharges']])
+    X_test_scaled[['tenure', 'MonthlyCharges', 'TotalCharges']] = scaler.transform(X_test[['tenure', 'MonthlyCharges', 'TotalCharges']])
+    
+    # Treinamento dos dois algoritmos de classificação
+    model_lr = LogisticRegression(random_state=42)
+    model_lr.fit(X_train_scaled, y_train)
+    
+    model_rf = RandomForestClassifier(random_state=42, max_depth=8, n_estimators=100)
+    model_rf.fit(X_train, y_train)
+    
+    # Avaliação e Métricas de Validação
+    preds_lr = model_lr.predict(X_test_scaled)
+    preds_rf = model_rf.predict(X_test)
+    
+    metricas = {
+        'Métrica': ['Acurácia', 'Precisão', 'Recall', 'F1-Score'],
+        'Regressão Logística': [accuracy_score(y_test, preds_lr), precision_score(y_test, preds_lr), recall_score(y_test, preds_lr), f1_score(y_test, preds_lr)],
+        'Random Forest': [accuracy_score(y_test, preds_rf), precision_score(y_test, preds_rf), recall_score(y_test, preds_rf), f1_score(y_test, preds_rf)]
     }
-    probs_bayes, detalhes_bayes = bayes_manual.predizer_probabilidade(instancia_bayes)
-    pred_bayes_final = max(probs_bayes, key=probs_bayes.get)
+    df_metricas = pd.DataFrame(metricas).set_index('Métrica')
+    
+    # Matrizes de confusão para exibição visual
+    cm_lr = confusion_matrix(y_test, preds_lr)
+    cm_rf = confusion_matrix(y_test, preds_rf)
+    
+    return df, df_treino_bayes, model_lr, model_rf, scaler, encoders, df_metricas, cm_lr, cm_rf
 
-    # Para manter a interface limpa, variáveis menos importantes são preenchidas
-    # com valores típicos do dataset. As seis entradas acima continuam sendo
-    # responsáveis por alterar o perfil do cliente na demonstração.
-    valores_padrao = {
-        "gender": "Female",
-        "SeniorCitizen": 0,
-        "Partner": "No",
-        "Dependents": "No",
-        "PhoneService": "Yes",
-        "MultipleLines": "No",
-        "OnlineSecurity": "No",
-        "OnlineBackup": "No",
-        "DeviceProtection": "No",
-        "TechSupport": "No",
-        "StreamingTV": "No",
-        "StreamingMovies": "No",
-    }
+# Inicializando o pipeline de backend
+df_clean, df_treino_bayes, model_lr, model_rf, scaler, encoders, df_metricas, cm_lr, cm_rf = pipeline_dados_e_modelos()
 
-    if inp_internet == "No":
-        valores_padrao.update({
-            "OnlineSecurity": "No internet service",
-            "OnlineBackup": "No internet service",
-            "DeviceProtection": "No internet service",
-            "TechSupport": "No internet service",
-            "StreamingTV": "No internet service",
-            "StreamingMovies": "No internet service",
-        })
 
-    instancia_ml_dict = {
-        **valores_padrao,
-        "tenure": inp_tenure,
-        "InternetService": inp_internet,
-        "Contract": inp_contract,
-        "PaperlessBilling": inp_paperless,
-        "PaymentMethod": inp_payment,
-        "MonthlyCharges": inp_monthly,
-        "TotalCharges": inp_total,
-    }
+# 4. Construção da Interface do Usuário e Filtros 
 
-    df_instancia = pd.DataFrame([instancia_ml_dict])
-    for col in df_instancia.columns:
-        if col in encoders and col != "Churn":
-            try:
-                df_instancia[col] = encoders[col].transform(df_instancia[col].astype(str))
-            except ValueError:
-                df_instancia[col] = 0
+st.title("📊 Dashboard Analítico: Retenção de Clientes & Predição de Churn")
 
-    df_instancia = df_instancia[ml_feature_names]
-    df_instancia_scaled = scaler.transform(df_instancia)
+# Abas
+aba1, aba2 = st.tabs(["📋 Seção 1: Análise Exploratória (EDA)", "🔮 Seção 2: Classificação Probabilística"])
 
-    pred_lr_raw = lr_model.predict(df_instancia_scaled)[0]
-    pred_rf_raw = rf_model.predict(df_instancia)[0]
-    prob_lr_yes = lr_model.predict_proba(df_instancia_scaled)[0][list(encoders["Churn"].classes_).index("Yes")] * 100
-    prob_rf_yes = rf_model.predict_proba(df_instancia)[0][list(encoders["Churn"].classes_).index("Yes")] * 100
-    pred_lr_text = encoders["Churn"].inverse_transform([pred_lr_raw])[0]
-    pred_rf_text = encoders["Churn"].inverse_transform([pred_rf_raw])[0]
 
-    c_res1, c_res2, c_res3 = st.columns(3)
-    with c_res1:
-        card_resultado(
-            "Teorema de Bayes Manual",
-            f"Churn: {pred_bayes_final}",
-            f"P(Yes): {probs_bayes.get('Yes', 0) * 100:.1f}%",
+# 📋 SEÇÃO 1: ANÁLISE EXPLORATÓRIA DE DADOS INTERATIVA
+
+with aba1:
+    st.header("Análise Avançada e Insights Demográficos")
+    
+    # Filtros Dinâmicos Interativos 
+    fa, fb, fc = st.columns(3)
+    with fa:
+        filtro_genero = st.selectbox("Filtrar por Gênero:", ["Todos"] + list(df_clean['gender'].unique()))
+    with fb:
+        filtro_idoso = st.selectbox("Filtrar por Idoso (SeniorCitizen):", ["Todos", "Não Idoso", "Idoso"])
+    with fc:
+        filtro_conjuge = st.selectbox("Filtrar se Possui Cônjuge (Partner):", ["Todos"] + list(df_clean['Partner'].unique()))
+        
+    # Aplicando os filtros dinamicamente ao DataFrame da EDA
+    df_eda_filtrado = df_clean.copy()
+    if filtro_genero != "Todos":
+        df_eda_filtrado = df_eda_filtrado[df_eda_filtrado['gender'] == filtro_genero]
+    if filtro_idoso != "Todos":
+        val_idoso = 1 if filtro_idoso == "Idoso" else 0
+        df_eda_filtrado = df_eda_filtrado[df_eda_filtrado['SeniorCitizen'] == val_idoso]
+    if filtro_conjuge != "Todos":
+        df_eda_filtrado = df_eda_filtrado[df_eda_filtrado['Partner'] == filtro_conjuge]
+        
+    # KPIs dinâmicos da análise exploratória
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    total_clientes_filtro = len(df_eda_filtrado)
+    taxa_churn_filtro = (df_eda_filtrado['Churn'] == 'Yes').mean() if total_clientes_filtro > 0 else 0
+    cobranca_media_filtro = df_eda_filtrado['MonthlyCharges'].mean() if total_clientes_filtro > 0 else 0
+    permanencia_media_filtro = df_eda_filtrado['tenure'].mean() if total_clientes_filtro > 0 else 0
+    
+    kpi1.metric("Clientes Filtrados", f"{total_clientes_filtro:,}")
+    kpi2.metric("Taxa Média de Churn", f"{taxa_churn_filtro:.1%}")
+    kpi3.metric("Cobrança Mensal Média", f"${cobranca_media_filtro:.2f}")
+    kpi4.metric("Tempo de Contrato Médio", f"{permanencia_media_filtro:.1f} meses")
+    
+    st.markdown("---")
+    
+    # Gráficos com Objetivos Analíticos Claros 
+    col_g1, col_g2 = st.columns(2)
+    
+    with col_g1:
+        st.subheader("Fatores Contratuais e Risco Estatístico")
+        fig_contrato = px.histogram(
+            df_eda_filtrado, x="Contract", color="Churn", barmode="group",
+            title="Distribuição de Churn por Tipo de Contrato (Risco Crítico no Mês a Mês)",
+            labels={'Contract': 'Modelo de Contrato', 'count': 'Quantidade de Clientes'},
+            color_discrete_map={'No': '#22c55e', 'Yes': '#ef4444'}
         )
-    with c_res2:
-        card_resultado("Regressão Logística", f"Churn: {pred_lr_text}", f"P(Yes): {prob_lr_yes:.1f}%")
-    with c_res3:
-        card_resultado("Random Forest", f"Churn: {pred_rf_text}", f"P(Yes): {prob_rf_yes:.1f}%")
-
-    st.subheader("Probabilidades calculadas pelo Teorema de Bayes")
-    df_probs_bayes = pd.DataFrame(
-        {"Classe": list(probs_bayes.keys()), "Probabilidade posterior (%)": [v * 100 for v in probs_bayes.values()]}
-    )
-    fig, ax = plt.subplots(figsize=(7, 3.4))
-    sns.barplot(data=df_probs_bayes, x="Classe", y="Probabilidade posterior (%)", ax=ax)
-    ax.set_ylim(0, 100)
-    ax.set_title("P(C|X) calculada manualmente pelo Teorema de Bayes")
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-    st.dataframe(df_probs_bayes.style.format({"Probabilidade posterior (%)": "{:.2f}"}), use_container_width=True)
-
-    st.subheader("Comparação visual entre os três métodos")
-    df_comp = pd.DataFrame(
-        {
-            "Método": ["Bayes Manual", "Regressão Logística", "Random Forest"],
-            "Predição final": [pred_bayes_final, pred_lr_text, pred_rf_text],
-            "Probabilidade de Churn = Yes (%)": [probs_bayes.get("Yes", 0) * 100, prob_lr_yes, prob_rf_yes],
-        }
-    )
-    fig, ax = plt.subplots(figsize=(8, 3.8))
-    sns.barplot(data=df_comp, x="Método", y="Probabilidade de Churn = Yes (%)", ax=ax)
-    ax.set_ylim(0, 100)
-    ax.set_title("Comparação da probabilidade de churn entre os métodos")
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-    st.dataframe(df_comp.style.format({"Probabilidade de Churn = Yes (%)": "{:.2f}"}), use_container_width=True)
-
-    with st.expander("Demonstração conceitual do Teorema de Bayes usado no dashboard"):
-        st.latex(r"P(C|X)=\frac{P(C)\cdot P(X|C)}{P(X)}")
-        st.markdown(
-            "Neste projeto, **C** representa a classe da variável alvo `Churn` e **X** representa os atributos informados pelo usuário. "
-            "As probabilidades a priori são calculadas diretamente do dataset, e as verossimilhanças são calculadas pelas frequências condicionais dos atributos categorizados."
+        st.plotly_chart(fig_contrato, use_container_width=True)
+        
+    with col_g2:
+        st.subheader("Comportamento de Consumo e Faturamento")
+        fig_boxplot = px.box(
+            df_eda_filtrado, x="Churn", y="MonthlyCharges", color="Churn",
+            title="Dispersão de Cobranças Mensais: Clientes que cancelam gastam mais",
+            labels={'MonthlyCharges': 'Cobrança Mensal ($)', 'Churn': 'Cancelou?'},
+            color_discrete_map={'No': '#22c55e', 'Yes': '#ef4444'}
         )
-        st.write("**Atributos usados no Bayes manual:**", ", ".join(features_bayes))
-        st.write("**Entrada categorizada do cliente:**", instancia_bayes)
-        for classe, det in detalhes_bayes.items():
-            st.markdown(f"**Classe {classe}**")
-            st.write(f"P(C): {det['prior']:.4f}")
-            st.write(f"P(X|C): {det['verossimilhanca']:.8f}")
-            st.write(f"P(C) × P(X|C): {det['posterior_nao_normalizado']:.8f}")
-            st.dataframe(
-                pd.DataFrame(det["fatores"], columns=["Atributo", "Valor observado", "P(valor|classe)"]).style.format({"P(valor|classe)": "{:.5f}"}),
-                use_container_width=True,
-            )
+        st.plotly_chart(fig_boxplot, use_container_width=True)
+        
+    st.info("**Conclusão Analítica da EDA:** A análise de frequências e dispersões prova estatisticamente que contratos de curto prazo (*Month-to-month*) somados a cobranças elevadas são as causas principais do Churn na Telco. Ações comerciais imediatas devem focar na migração contratual.")
 
-# =============================================================================
-# ABA 3 - VALIDAÇÃO DOS MODELOS
-# =============================================================================
-with tabs[2]:
-    st.header("Validação dos Modelos de Classificação")
-    st.caption("A rubrica solicita dois algoritmos treinados e avaliados com métricas adequadas, além de comparação entre métodos.")
 
-    st.subheader("Métricas de desempenho")
-    st.dataframe(metricas_modelos.style.format({c: "{:.3f}" for c in metricas_modelos.columns if c != "Modelo"}), use_container_width=True)
+# 🔮 SEÇÃO 2: CLASSIFICAÇÃO PROBABILÍSTICA & COMPARAÇÃO VISUAL
 
-    metricas_long = metricas_modelos.melt(id_vars="Modelo", var_name="Métrica", value_name="Valor")
-    fig, ax = plt.subplots(figsize=(9, 4))
-    sns.barplot(data=metricas_long, x="Métrica", y="Valor", hue="Modelo", ax=ax)
-    ax.set_ylim(0, 1)
-    ax.set_title("Comparação de Métricas: Regressão Logística x Random Forest")
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-
-    st.subheader("Matrizes de confusão")
-    mc1, mc2 = st.columns(2)
-    for col_obj, nome in zip([mc1, mc2], ["Regressão Logística", "Random Forest"]):
-        with col_obj:
-            fig, ax = plt.subplots(figsize=(4.5, 3.5))
-            sns.heatmap(
-                matrizes_confusao[nome],
-                annot=True,
-                fmt="d",
-                cmap="Blues",
-                xticklabels=encoders["Churn"].classes_,
-                yticklabels=encoders["Churn"].classes_,
-                ax=ax,
-            )
-            ax.set_xlabel("Predito")
-            ax.set_ylabel("Real")
-            ax.set_title(nome)
-            fig.tight_layout()
-            st.pyplot(fig, use_container_width=True)
-
-    melhor_f1 = metricas_modelos.sort_values("F1-Score", ascending=False).iloc[0]
-    st.success(
-        f"Conclusão técnica: pelo F1-Score, o melhor modelo nesta divisão treino/teste foi **{melhor_f1['Modelo']}** "
-        f"com F1 = **{melhor_f1['F1-Score']:.3f}**. O F1 é importante porque equilibra precisão e recall."
+with aba2:
+    st.header("Simulador de Classificação e Avaliação Estatística")
+    st.markdown("Altere as variáveis do cliente no painel esquerdo para avaliar os riscos calculados pelo Teorema de Bayes e Machine Learning.")
+    
+    # Sidebar dedicada aos inputs do usuário
+    st.sidebar.header("🔮 Parâmetros do Novo Cliente")
+    
+    input_contract = st.sidebar.selectbox("Tipo de Contrato", df_clean['Contract'].unique(), index=0)
+    input_internet = st.sidebar.selectbox("Serviço de Internet", df_clean['InternetService'].unique(), index=1)
+    input_payment = st.sidebar.selectbox("Forma de Pagamento", df_clean['PaymentMethod'].unique(), index=2)
+    input_dependents = st.sidebar.selectbox("Possui Dependentes?", df_clean['Dependents'].unique(), index=0)
+    
+    input_tenure = st.sidebar.slider("Tempo de Permanência (Meses)", min_value=0, max_value=72, value=12)
+    input_monthly = st.sidebar.slider("Valor da Cobrança Mensal ($)", min_value=18, max_value=120, value=75)
+    input_total = st.sidebar.slider("Valor Total Cobrado ($)", min_value=18, max_value=8600, value=900)
+    
+    # 1. Execução do Teorema de Bayes Puro Manual
+    dicionario_cliente = {
+        'Contract': input_contract,
+        'InternetService': input_internet,
+        'PaymentMethod': input_payment
+    }
+    probabilidade_bayes = calcular_bayes_manual(df_treino_bayes, dicionario_cliente)
+    
+    # 2. Execução dos Modelos do Scikit-Learn (Tratamento de Escala e Encoders inclusos)
+    dados_usuario_df = pd.DataFrame([{
+        'Contract': encoders['Contract'].transform([input_contract])[0],
+        'InternetService': encoders['InternetService'].transform([input_internet])[0],
+        'PaymentMethod': encoders['PaymentMethod'].transform([input_payment])[0],
+        'tenure': input_tenure,
+        'MonthlyCharges': input_monthly,
+        'TotalCharges': input_total
+    }])
+    
+    # Escalonamento apenas para o modelo que sofre com distância (Regressão Logística)
+    dados_usuario_scaled = dados_usuario_df.copy()
+    dados_usuario_scaled[['tenure', 'MonthlyCharges', 'TotalCharges']] = scaler.transform(dados_usuario_df[['tenure', 'MonthlyCharges', 'TotalCharges']])
+    
+    probabilidade_lr = model_lr.predict_proba(dados_usuario_scaled)[0][1]
+    probabilidade_rf = model_rf.predict_proba(dados_usuario_df)[0][1]
+    
+    # Exibição dos cards comparativos de resultados em tempo real
+    st.subheader("Risco Estimado de Cancelamento (Churn)")
+    m1, m2, m3 = st.columns(3)
+    m1.metric(label="Teorema de Bayes (Conceitual/Manual)", value=f"{probabilidade_bayes:.1%}")
+    m2.metric(label="Regressão Logística (Fronteira Linear)", value=f"{probabilidade_lr:.1%}")
+    m3.metric(label="Random Forest (Ensemble de Árvores)", value=f"{probabilidade_rf:.1%}")
+    
+    # Gráfico de comparação visual exigido expressamente na rubrica
+    st.markdown("---")
+    df_grafico_comp = pd.DataFrame({
+        'Abordagem / Algoritmo': ['Teorema de Bayes (Manual)', 'Regressão Logística (ML)', 'Random Forest (ML)'],
+        'Probabilidade Estimada de Churn': [probabilidade_bayes, probabilidade_lr, probabilidade_rf]
+    })
+    
+    fig_barra_pred = px.bar(
+        df_grafico_comp, x='Abordagem / Algoritmo', y='Probabilidade Estimada de Churn',
+        color='Abordagem / Algoritmo', text_auto='.1%', range_y=[0, 1],
+        title="Comparação Visual de Risco Estimado por Abordagem",
+        color_discrete_sequence=['#3b82f6', '#10b981', '#f59e0b']
     )
-
+    st.plotly_chart(fig_barra_pred, use_container_width=True)
+    
+    # Validação Estatística das Métricas de Performance do Conjunto de Teste
+    st.subheader("🎯 Validação Científica dos Modelos (Conjunto de Teste Separado)")
+    
+    col_t1, col_t2 = st.columns([1, 2])
+    with col_t1:
+        st.markdown("**Tabela Comparativa de Performance Geral:**")
+        st.dataframe(df_metricas.style.format("{:.2%}"))
+    
+    with col_t2:
+        st.markdown("**Matrizes de Confusão (Distribuição de Erros/Acertos Reais):**")
+        col_cm1, col_cm2 = st.columns(2)
+        
+        with col_cm1:
+            fig_cm_lr = go.Figure(data=go.Heatmap(
+                z=cm_lr, x=['Predito Não', 'Predito Sim'], y=['Real Não', 'Real Sim'],
+                colorscale='Blues', text=cm_lr, texttemplate="%{text}", showscale=False
+            ))
+            fig_cm_lr.update_layout(title="Regressão Logística", width=250, height=220, margin=dict(l=20,r=20,t=40,b=20))
+            st.plotly_chart(fig_cm_lr, use_container_width=False)
+            
+        with col_cm2:
+            fig_cm_rf = go.Figure(data=go.Heatmap(
+                z=cm_rf, x=['Predito Não', 'Predito Sim'], y=['Real Não', 'Real Sim'],
+                colorscale='Greens', text=cm_rf, texttemplate="%{text}", showscale=False
+            ))
+            fig_cm_rf.update_layout(title="Random Forest", width=250, height=220, margin=dict(l=20,r=20,t=40,b=20))
+            st.plotly_chart(fig_cm_rf, use_container_width=False)
+            
+    st.caption("Nota de Fundamentação Teórica: O cálculo do Teorema de Bayes se baseia no produto das verossimilhanças assumindo independência condicional. Já os modelos supervisionados lineares e de ensemble de árvores capturam interações numéricas de alta ordem e necessitam de validação rigorosa via matriz de confusão.")
