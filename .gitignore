@@ -1,0 +1,25 @@
+# Ambientes virtuais (NAO versionar)
+.venv/
+.venv-1/
+analise_e_modelagem/
+venv/
+env/
+
+# Cache do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Sistema operacional / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Arquivo gerador temporario do notebook
+_build_notebook.py
