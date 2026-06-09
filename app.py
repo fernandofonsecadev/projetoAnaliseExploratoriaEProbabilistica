@@ -18,15 +18,17 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 
-# `src` é importável porque app.py está na raiz do projeto.
-# Importar a classe é OBRIGATÓRIO para o joblib recarregar bayes_manual.pkl.
+
 from src import preprocess as prep
-from src.bayes import ImplementacaoBayesManual  # noqa: F401  (necessário para o unpickle)
+from src.bayes import ImplementacaoBayesManual
 
 st.set_page_config(page_title="Churn — Análise e Classificação", layout="wide")
 sns.set_theme(style="whitegrid")
 
 ROTULOS = {0: "Permanece (No)", 1: "Churn (Yes)"}
+
+import os
+import sys
 
 
 # --------------------------------------------------------------- carregamento
@@ -39,9 +41,15 @@ def carregar_dados():
 @st.cache_resource
 def carregar_modelos():
     p = prep.MODELS_DIR
+
+    lr_model = joblib.load(os.path.join(p, "regressao_logistica.pkl"))
+    
+    if not hasattr(lr_model, "multi_class"):
+        lr_model.multi_class = "auto"  
+
     artefatos = {
         "bayes": joblib.load(os.path.join(p, "bayes_manual.pkl")),
-        "lr": joblib.load(os.path.join(p, "regressao_logistica.pkl")),
+        "lr": lr_model,
         "rf": joblib.load(os.path.join(p, "random_forest.pkl")),
         "scaler": joblib.load(os.path.join(p, "scaler.pkl")),
         "encoders": joblib.load(os.path.join(p, "encoders.pkl")),
