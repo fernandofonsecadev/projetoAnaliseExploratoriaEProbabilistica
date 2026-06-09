@@ -33,10 +33,11 @@ projetoAnaliseExploratoriaEProbabilistica/
 │   └── preprocess.py              # limpeza, discretização e helpers de inferência
 ├── app.py                         # dashboard Streamlit
 ├── requirements.txt
-├── RELATORIO_TECNICO.md
-├── GUIA_ARGUICAO.md
-├── DECLARACAO_USO_IA.md
-└── CHECKLIST_RUBRICA.md
+├── documentação/
+    ├── RELATORIO_TECNICO.md
+    ├── GUIA_ARGUICAO.md
+    ├── DECLARACAO_USO_IA.md
+    └── CHECKLIST_RUBRICA.md
 ```
 
 ## ⚙️ Como criar o ambiente virtual
