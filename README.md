@@ -8,8 +8,9 @@ Identificar quais clientes têm maior probabilidade de **cancelar o serviço (ch
 
 ## 👥 Integrantes
 
+- Fernando Fonseca
 - Brenda Nascimento
-- _[adicionar demais integrantes da equipe]_
+- Enzo Brito
 
 ## 📂 Dataset
 
